@@ -48,7 +48,11 @@ bool setupInputFile(std::string filename) {
 /*
  * Invoke External Program
  */
-bool invokeExternalProgram(std::string command) {
+bool invokeExternalProgram(std::string command, int returnCode) {
+	// fd 1: stdout, fd 2: stderr
+	// redirect stderr to stdout
+	// command += " 2>&1"; 
+
 	FILE* pipe = popen(command.c_str(), "r");
 	if(!pipe) { 
 		std::cerr << "Error popen\n";
@@ -60,15 +64,17 @@ bool invokeExternalProgram(std::string command) {
 	while(fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
 		result += buffer.data();
 	}
-	pclose(pipe);
 
-	std::cout << result << std::endl;
+	returnCode = pclose(pipe);
+
+	// Print the output 
+	// std::cout << result << std::endl;
 	return true;
 }
 
 
 int main() {
-	std::ifstream logo("logo", std::ios::in | std::ios::binary);
+	std::ifstream logo("util/logo", std::ios::in | std::ios::binary);
 	std::cout << logo.rdbuf();
 	logo.close();
 
@@ -78,13 +84,16 @@ int main() {
 
 	// Testing fuzzing input
 	setupInputFile(input_filename);
-	std::cout << "---------- fuzzing input generation complete ----------\n";
+	std::cout << "===== fuzzing input generation complete =====\n";
 
 
 	// Invoke External Program
 	std::string command = "./" + program + " < " + input_filename;
-	invokeExternalProgram(command);
-	std::cout << "invoke external process complete\n";
+	int returnCode;
+	std::cout << "===== invoke external process start =====\n";
+	invokeExternalProgram(command, returnCode);
+	std::cout << "return code: " << returnCode << std::endl;
+	std::cout << "===== invoke external process complete =====\n";
 
 	return 0;
 }
