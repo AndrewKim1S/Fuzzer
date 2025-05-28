@@ -1,0 +1,24 @@
+#include "fuzzer.h"
+
+
+int main() {
+	// Set Working Directory
+	if(chdir(fuzz::WORKING_DIR.c_str()) != 0) {
+		std::cerr << "Error could not set working directory" << std::endl;
+		return -1;
+	}
+
+	// Print Logo
+	std::ifstream logo("util/logo");
+	if(!logo) {
+		std::cerr << "Error could not open logo file" << std::endl;
+	}
+	std::cout << logo.rdbuf();
+	logo.close();
+
+	// fuzz a program 
+	fuzz::fuzz_file(1);
+
+	return 0;
+}
+

@@ -2,12 +2,13 @@ CC = g++
 CFLAGS = -Wall
 
 SRCDIR = src
-BUILDDIR = obj
+BUILDDIR = build
 
 TESTDIR = tests
 TESTBUILDDIR = tests_bin
 
-TARGET = $(BUILDDIR)/a.out
+# TARGET = $(BUILDDIR)/a.out
+TARGET = fuzzer
 
 SRCS = $(wildcard $(SRCDIR)/*.cc)
 OBJS = $(patsubst $(SRCDIR)/%.cc,$(BUILDDIR)/%.o,$(SRCS))
@@ -33,3 +34,4 @@ $(TESTBUILDDIR)/%: $(TESTDIR)/%.cc
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR) $(TESTBUILDDIR)
+	rm $(TARGET)
