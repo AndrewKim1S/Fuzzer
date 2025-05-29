@@ -9,6 +9,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	// std::cout << "print to stdout from test\n";
-	//std::cerr << "print to stderr from test\n";
+	std::cerr << "print to stderr from test\n";
 	return 9;
 }

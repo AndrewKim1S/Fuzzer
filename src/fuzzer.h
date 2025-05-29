@@ -3,16 +3,19 @@
 #include <iostream>
 #include <random>
 #include <fstream>
+#include <chrono>
+#include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
 
 
 namespace fuzz {
 
-const int MAX_NUM_INPUTS = 1000;
+const int MAX_RUNTIME = 60000; // This is 600 seconds or 10 minutes
+const int NUM_INPUTS = 1000;
 const int MIN_INPUT_LEN = 10;
 const int MAX_INPUT_LEN = 80;
-const int MAX_NUM_ARGS = 10;
+const int NUM_ARGS = 10;
 const std::string WORKING_DIR = "/home/sheehyun/dev/AEG/Fuzzing";
 
 
@@ -23,7 +26,8 @@ struct Input {
 
 struct Output {
 	int _returnCode;
-	std::string _outputFile;
+	bool _timeout;
+	std::string _stderrOutput;
 };
 
 
@@ -65,7 +69,7 @@ std::ofstream setup_input_file(std::string filename) {
 		std::cerr << "Error opening file\n";
 		exit(-1);
 	}
-	for(int i = 0; i < MAX_NUM_INPUTS; i++) {
+	for(int i = 0; i < NUM_INPUTS; i++) {
 		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, 32, 64);
 		file << a;
 		file << "\n";
@@ -77,7 +81,7 @@ std::ofstream setup_input_file(std::string filename) {
 /*
  * Invoke External Program
  */
-void run_program_args(std::string &program, Input in, Output out) {
+void run_program_args(std::string& program, Input& in, Output& out) {
 	// Setup input & output pipes
 	int stdinPipe[2];
 	int stdoutPipe[2];
@@ -86,18 +90,24 @@ void run_program_args(std::string &program, Input in, Output out) {
 		std::cerr << "Error initializing pipe\n" << std::endl;
 	}
 
-	// Setup input file
+	// Setup inputs
 	std::ifstream inputFile(in._inputFile);
 	if(!inputFile) {
 		std::cerr << "Error opening input file for reading\n" << std::endl;
 		exit(-1);
 	}
+	char** args = new char*[NUM_ARGS+1];
+	char** env = {NULL};
 	std::string line;
-	std::vector<std::string> args;
-	for(int i = 0; i < MAX_NUM_ARGS; i++) {
+	for(int i = 0; i < NUM_ARGS; i++) {
 		std::getline(inputFile, line);
-		args.push_back(line);
+		args[i] = strdup(line.c_str());
 	} 
+	inputFile.close();
+	args[NUM_ARGS] = nullptr;
+
+	// Setup time
+	auto startTime = std::chrono::steady_clock::now();
 	
 	// Fork process
 	pid_t pid = fork();
@@ -112,10 +122,9 @@ void run_program_args(std::string &program, Input in, Output out) {
 		dup2(stdoutPipe[1], STDOUT_FILENO);
 		dup2(stderrPipe[1], STDERR_FILENO);
 
-		std::string args = "";
-		execl(program.c_str(), program.c_str(), args[0], nullptr);
+		execve(program.c_str(), args, env);
 
-		std::cerr << "Error execl child proc failed" << std::endl;
+		std::cerr << "Error exec child proc failed" << std::endl;
 		exit(-1);
 	} 
 	// Parent
@@ -131,8 +140,11 @@ void run_program_args(std::string &program, Input in, Output out) {
 		std::string stdoutOutput;
 		std::string stderrOutput;
 
+		// Keep track of time
+		int elapsed = 0;
+
 		// Capture stdout and stderr from program
-		while(waitpid(pid, &status, WNOHANG) ) {
+		while(waitpid(pid, &status, WNOHANG) == 0 && elapsed < MAX_RUNTIME) {
 			bytes = read(stdoutPipe[0], buffer, sizeof(buffer));
 			if(bytes > 0) {
 				stdoutOutput.append(buffer, bytes);
@@ -141,26 +153,31 @@ void run_program_args(std::string &program, Input in, Output out) {
 			if(bytes > 0) {
 				stderrOutput.append(buffer, bytes);
 			}
+			elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count();
 		}
-
 		waitpid(pid, &status, 0);
 
-		// Get the return code
+		// Set return code
 		if(WIFEXITED(status)) {
 			out._returnCode = WEXITSTATUS(status);
-			std::cout << "Exit code: " << out._returnCode << std::endl;
 		}
-
-		std::cout << "stdout:\n" << stdoutOutput << std::endl;
-		std::cout << "stderr:\n" << stderrOutput << std::endl;
+		// Set output 
+		out._stderrOutput = stderrOutput;
+		if(elapsed > MAX_RUNTIME) {
+			out._timeout = true;
+		}
 	}
-	// Error
+	// Error in fork
 	else {
 		std::cerr << "Error fork\n" << std::endl;
 		exit(-1);
 	}
 
-	inputFile.close();
+	// Free allocated args
+	for(int i = 0; args[i] != nullptr; i++) {
+		free(args[i]);
+	}
+	delete[] args;
 }
 
 
@@ -168,26 +185,30 @@ void run_program_args(std::string &program, Input in, Output out) {
  * Fuzz a single file
  */
 void fuzz_file(int epochs) {
-	for(int i = 0; i < epochs; i++) {
-		std::string program = "tests_bin/test1";
+	std::string program = "tests_bin/test1";
 
-		std::string inputFilename = "input" + std::to_string(i+1);
-		std::string outputFilename = "output" + std::to_string(i+1);
+	std::string inputFilename = "input";
 
-		std::ofstream inputFile = setup_input_file(inputFilename);
-		inputFile.close();
+	std::ofstream inputFile = setup_input_file(inputFilename);
+	inputFile.close();
 
-		// Initialize inputs, outputs, configurations for binary inputs
-		Input in;
-		in._inputFile = inputFilename;
+	// Initialize inputs, outputs, configurations for binary inputs
+	Input in;
+	in._inputFile = inputFilename;
 
-		Output out;
-		out._returnCode = 0;
-		out._outputFile = outputFilename;
-		
-		// Run Program
-		run_program_args(program, in, out);
-	}
+	Output out;
+	out._returnCode = 0;
+	out._timeout = false;
+	out._stderrOutput = "";
+	
+	// Run Program
+	run_program_args(program, in, out);
+
+	// Analyze Results - see if anything interesting
+
+	// DEBUG print out results
+	std::cout << "Return Code: " << out._returnCode << std::endl;
+	std::cout << "stderr: " << out._stderrOutput << std::endl;
 }
 
 }
