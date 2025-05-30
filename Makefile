@@ -44,3 +44,4 @@ clean:
 	rm -rf $(BUILDDIR) $(TESTBUILDDIR)
 	rm -f $(TARGET)
 	rm -f input*
+	rm -f log

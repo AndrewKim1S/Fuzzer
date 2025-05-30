@@ -2,6 +2,14 @@
 
 using namespace fuzz;
 
+static int segFaultNum = 0;
+static int sigAbortNum = 0;
+static int sigFpeNum = 0;
+static int sigIllNum = 0;
+static int sigBusNum = 0;
+static int sigSysNum = 0;
+static int numRuns = 0;
+
 /*
  * Generate a random input string
  * char_code_start & char_code_end are in ascii codes
@@ -62,15 +70,16 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 		std::cerr << "Error opening input file for reading\n" << std::endl;
 		exit(-1);
 	}
-	char** args = new char*[NUM_ARGS+1];
+	char** args = new char*[NUM_ARGS+2];
 	char** env = {NULL};
 	std::string line;
-	for(int i = 0; i < NUM_ARGS; i++) {
+	args[0] = strdup(program.c_str());
+	for(int i = 1; i < NUM_ARGS+1; i++) {
 		std::getline(inputFile, line);
 		args[i] = strdup(line.c_str());
 	} 
+	args[NUM_ARGS+1] = nullptr;
 	inputFile.close();
-	args[NUM_ARGS] = nullptr;
 
 	// Setup time
 	auto startTime = std::chrono::steady_clock::now();
@@ -124,11 +133,15 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 		waitpid(pid, &status, 0);
 
 		// Set return code
-		if(WIFEXITED(status)) {
+		if(WIFSIGNALED(status)) {
+			out._signal = WTERMSIG(status);
+		}
+		else if(WIFEXITED(status)) {
 			out._returnCode = WEXITSTATUS(status);
 		}
 		// Set output 
 		out._stderrOutput = stderrOutput;
+		out._stdoutOutput = stdoutOutput;
 		if(elapsed > MAX_RUNTIME) {
 			out._timeout = true;
 		}
@@ -140,7 +153,7 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 	}
 
 	// Free allocated args
-	for(int i = 0; args[i] != nullptr; i++) {
+	for(int i = 0; i < NUM_ARGS + 1; i++) {
 		free(args[i]);
 	}
 	delete[] args;
@@ -148,30 +161,123 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 
 
 /*
+ * Analyze the output 
+ */
+void fuzz::analyze_output(Input& in, Output& out) {
+	std::string log = "";
+	
+	// Check for timeouts
+	if(out._timeout) {
+		log = "Timeout \t";
+	}
+
+	// Check return code
+	if(out._returnCode != 0) {
+		log = "Return Code \t";
+	}
+
+	// Check for signals 
+	switch (out._signal) {
+		case SIGSEGV:
+			log = "SIGSEGV \t";
+			segFaultNum++;
+			break;
+		case SIGABRT:
+			log = "SIGABRT \t";
+			sigAbortNum++;
+			break;
+		case SIGFPE:
+			log = "SIGFPE \t";
+			sigFpeNum++;
+			break;
+		case SIGILL:
+			log = "SIGILL \t";
+			sigIllNum++;
+			break;
+		case SIGBUS:
+			log = "SIGBUS \t";
+			sigBusNum++;
+			break;
+		case SIGSYS:
+			log = "SIGSYS \t";
+			sigSysNum++;
+			break;
+		default:
+			break;
+	}
+
+	// Write to file
+	std::ifstream inputFile(in._inputFile);
+	if(!inputFile) { 
+		std::cerr << "Failed to open file" << std::endl;
+		return;
+	}
+	std::ostringstream buf;
+	buf << inputFile.rdbuf();
+	log += buf.str();
+
+	log_results(log);
+}
+
+
+/*
  * Fuzz a single file
  */
 void fuzz::fuzz_file(std::string binName, int epochs) {
-	std::string inputFilename = "input";
-	if(!setup_input_file(inputFilename)) { 
-		exit(-1); 
+	for(int i = 0; i < epochs; i++) {
+		std::string inputFilename = "input";
+		if(!setup_input_file(inputFilename)) { 
+			exit(-1); 
+		}
+
+		// Initialize inputs, outputs, configurations for binary inputs
+		Input in;
+		in._inputFile = inputFilename;
+
+		Output out;
+		out._returnCode = 0;
+		out._signal = 0;
+		out._timeout = false;
+		out._stderrOutput = "";
+		
+		// Run Program
+		run_program_args(binName, in, out);
+
+		// Analyze Results - see if anything interesting
+		analyze_output(in, out);
+
+		// DEBUG print out results
+		/*
+		std::cout << "Return Code: " << out._returnCode << std::endl;
+		std::cout << "Signal: " << out._signal << std::endl;
+		std::cout << "stderr: " << out._stderrOutput << std::endl;
+		std::cout << "stdout: " << out._stdoutOutput << std::endl;
+		*/
 	}
+	numRuns = epochs;
+}
 
-	// Initialize inputs, outputs, configurations for binary inputs
-	Input in;
-	in._inputFile = inputFilename;
 
-	Output out;
-	out._returnCode = 0;
-	out._timeout = false;
-	out._stderrOutput = "";
-	
-	// Run Program
-	run_program_args(binName, in, out);
+/*
+ * Log any interesting results
+ */
+void fuzz::log_results(std::string result) {
+	std::ofstream logFile(LOG_FILE, std::ios::app);
+	if(!logFile) {
+		std::cerr << "Error opening log file" << std::endl;
+		return;
+	}
+	logFile << result;
+	logFile.close();
+}
 
-	// Analyze Results - see if anything interesting
 
-	// DEBUG print out results
-	std::cout << "Return Code: " << out._returnCode << std::endl;
-	std::cout << "stderr: " << out._stderrOutput << std::endl;
+/*
+ * Print statistics
+ */
+void fuzz::print_statistics() {
+	std::cout << "================== Fuzzing completed ==================" << std::endl;
+	std::cout << "Summary of " << numRuns << " runs: " << std::endl;
+	std::cout << "SIGSEGV: \t" << segFaultNum << std::endl;
 }
 

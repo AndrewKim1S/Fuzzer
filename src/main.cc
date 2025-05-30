@@ -24,7 +24,9 @@ int main(int argc, char* argv[]) {
 	logo.close();
 
 	// fuzz a program 
-	fuzz::fuzz_file(program, 1);
+	fuzz::fuzz_file(program, 100);
+
+	fuzz::print_statistics();
 
 	return 0;
 }
