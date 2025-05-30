@@ -1,7 +1,14 @@
 #include "fuzzer.h"
 
 
-int main() {
+int main(int argc, char* argv[]) {
+	std::string program;
+	if(argc != 2) {
+		std::cout << "Usage: ./fuzzer <program>\n";
+		exit(-1);
+	}
+	program = argv[1];
+
 	// Set Working Directory
 	if(chdir(fuzz::WORKING_DIR.c_str()) != 0) {
 		std::cerr << "Error could not set working directory" << std::endl;
@@ -17,7 +24,7 @@ int main() {
 	logo.close();
 
 	// fuzz a program 
-	fuzz::fuzz_file(1);
+	fuzz::fuzz_file(program, 1);
 
 	return 0;
 }
