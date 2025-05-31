@@ -42,6 +42,7 @@ struct BinaryConfig {
 
 
 // Functions
+int rng(int a, int b);
 std::string generate_rand_input(int min_size, int max_size, int char_code_start, int char_code_end);
 bool setup_input_file(std::string filename);
 void run_program_args(std::string& program, Input& in, Output& out);
@@ -50,4 +51,9 @@ void fuzz_file(std::string binName, int epochs);
 void log_results(std::string result);
 void print_statistics();
 
+// Mutating inputs
+void mutate_input(std::string& input, int char_code_start, int char_code_end);
+void delete_random_char(std::string& input);
+void insert_random_char(std::string& input, int char_code_start, int char_code_end);
+void flip_random_char(std::string& input, int char_code_start, int char_code_end);
 }

@@ -10,23 +10,29 @@ static int sigBusNum = 0;
 static int sigSysNum = 0;
 static int numRuns = 0;
 
+static std::random_device rd;
+static std::mt19937 gen(rd());
+
+
+
+/*
+ * RNG
+ */
+int fuzz::rng(int a, int b) {
+	std::uniform_int_distribution<int> dist(a, b);
+	return dist(gen);
+};
+
+	
 /*
  * Generate a random input string
  * char_code_start & char_code_end are in ascii codes
  */
 std::string fuzz::generate_rand_input(int min_size, int max_size, int char_code_start, int char_code_end) {
-	static std::random_device rd;
-	static std::mt19937 gen(rd());
-	
-	auto rand = [&](int a, int b){
-		std::uniform_int_distribution<int> dist(a, b);
-		return dist(gen);
-	};
-		
 	std::string input;
-	size_t size = rand(min_size, max_size);
+	size_t size = rng(min_size, max_size);
 	for(size_t i = 0; i < size; i++) {
-		char c = static_cast<char>(rand(char_code_start, char_code_end));
+		char c = static_cast<char>(rng(char_code_start, char_code_end));
 		input += c;
 	}
 	return input;
@@ -43,7 +49,7 @@ bool fuzz::setup_input_file(std::string filename) {
 		return false;
 	}
 	for(int i = 0; i < fuzz::NUM_INPUTS; i++) {
-		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, 32, 64);
+		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, 32, 127);
 		file << a;
 		file << "\n";
 	}
@@ -279,5 +285,55 @@ void fuzz::print_statistics() {
 	std::cout << "================== Fuzzing completed ==================" << std::endl;
 	std::cout << "Summary of " << numRuns << " runs: " << std::endl;
 	std::cout << "SIGSEGV: \t" << segFaultNum << std::endl;
+}
+
+
+/*
+ * Mutate inputs
+ */
+void fuzz::mutate_input(std::string& input, int char_code_start, int char_code_end) {
+	int method = rng(1,3);
+	switch(method) {
+		case 1:
+			delete_random_char(input);
+			break;
+		case 2:
+			insert_random_char(input, char_code_start, char_code_end);
+			break;
+		case 3:
+			flip_random_char(input, char_code_start, char_code_end);
+			break;
+		default:
+			break;
+	}
+}
+
+
+/*
+ * Delete a random char from input string
+ */
+void fuzz::delete_random_char(std::string& input) {
+	int index = rng(0, input.size());
+	input.erase(index, 1);
+}
+
+
+/*
+ * Insert random char into input string
+ */
+void fuzz::insert_random_char(std::string& input, int char_code_start, int char_code_end) {
+	size_t index = rng(0, input.size());
+	char c = static_cast<char>(rng(char_code_start, char_code_end));
+	input.insert(input.begin() + index, c);
+}
+
+
+/*
+ * Flip a random input char to another
+ */
+void fuzz::flip_random_char(std::string& input, int char_code_start, int char_code_end) {
+	size_t index = rng(0, input.size());
+	char c = static_cast<char>(rng(char_code_start, char_code_end));
+	input[index] = c;
 }
 

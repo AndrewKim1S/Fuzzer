@@ -25,8 +25,14 @@ int main(int argc, char* argv[]) {
 
 	// fuzz a program 
 	fuzz::fuzz_file(program, 100);
-
 	fuzz::print_statistics();
+
+	/*
+	std::string test = "mutate this";
+	for(int i = 0; i < 100; i++) {
+		fuzz::mutate_input(test, 32, 64);
+	}
+	*/
 
 	return 0;
 }
