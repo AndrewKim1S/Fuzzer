@@ -5,6 +5,7 @@
 #include <fstream>
 #include <chrono>
 #include <sstream>
+#include <algorithm>
 
 #include <cstring>
 #include <unistd.h>
@@ -15,10 +16,6 @@ namespace fuzz {
 
 // Constants 
 const int MAX_RUNTIME = 600; // 10 min
-const int NUM_INPUTS = 1;
-const int MIN_INPUT_LEN = 1;
-const int MAX_INPUT_LEN = 100;
-const int NUM_ARGS = 1;
 const std::string WORKING_DIR = "/home/sheehyun/dev/AEG/Fuzzing";
 const std::string LOG_FILE = "log";
 
@@ -36,8 +33,16 @@ struct Output {
 };
 
 struct BinaryConfig {
-	bool _args;
-	bool _stdins;
+	int _num_args;
+	int _min_input_len;
+	int _max_input_len;
+	bool _mutate;
+	int _mutations;
+	std::vector<std::vector<std::string>> _valid_inputs;
+};
+
+struct FuzzerConfig {
+	int _num_epochs;
 };
 
 
@@ -47,7 +52,7 @@ std::string generate_rand_input(int min_size, int max_size, int char_code_start,
 bool setup_input_file(std::string filename);
 void run_program_args(std::string& program, Input& in, Output& out);
 void analyze_output(Input& in, Output& out);
-void fuzz_file(std::string binName, int epochs);
+void fuzz_file(std::string binName, BinaryConfig& configs, int epochs);
 void log_results(std::string result);
 void print_statistics();
 

@@ -38,6 +38,11 @@ fuzz: $(TARGET)
 .PHONY: tests
 tests: $(TEST_EXECS)
 
+# Debug build
+.PHONY: debug
+debug: CFLAGS = -Wall -g
+debug: $(TARGET)
+
 # clean up build dir
 .PHONY: clean
 clean:

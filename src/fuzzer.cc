@@ -13,6 +13,9 @@ static int numRuns = 0;
 static std::random_device rd;
 static std::mt19937 gen(rd());
 
+static int MIN_INPUT_LEN = 0;
+static int MAX_INPUT_LEN = 0;
+static int NUM_ARGS = 0;
 
 
 /*
@@ -48,7 +51,7 @@ bool fuzz::setup_input_file(std::string filename) {
 		std::cerr << "Error opening file\n";
 		return false;
 	}
-	for(int i = 0; i < fuzz::NUM_INPUTS; i++) {
+	for(int i = 0; i < NUM_ARGS; i++) {
 		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, 32, 127);
 		file << a;
 		file << "\n";
@@ -229,7 +232,13 @@ void fuzz::analyze_output(Input& in, Output& out) {
 /*
  * Fuzz a single file
  */
-void fuzz::fuzz_file(std::string binName, int epochs) {
+void fuzz::fuzz_file(std::string binName, BinaryConfig& configs, int epochs) {
+	// Setup configs
+	NUM_ARGS = configs._num_args;
+	MAX_INPUT_LEN = configs._max_input_len;
+	MIN_INPUT_LEN = configs._min_input_len;
+
+
 	for(int i = 0; i < epochs; i++) {
 		std::string inputFilename = "input";
 		if(!setup_input_file(inputFilename)) { 
@@ -251,14 +260,6 @@ void fuzz::fuzz_file(std::string binName, int epochs) {
 
 		// Analyze Results - see if anything interesting
 		analyze_output(in, out);
-
-		// DEBUG print out results
-		/*
-		std::cout << "Return Code: " << out._returnCode << std::endl;
-		std::cout << "Signal: " << out._signal << std::endl;
-		std::cout << "stderr: " << out._stderrOutput << std::endl;
-		std::cout << "stdout: " << out._stdoutOutput << std::endl;
-		*/
 	}
 	numRuns = epochs;
 }
