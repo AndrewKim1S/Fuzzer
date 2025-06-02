@@ -1,7 +1,10 @@
 #include "fuzzer.h"
 
 
-void setBinaryConfigs(fuzz::BinaryConfig& configs, std::string& filename) {
+/*
+ * Parse configurations for the binary and fuzzer
+ */
+void setConfigs(fuzz::BinaryConfig& configs, std::string& filename) {
 	std::ifstream file(filename);
 	std::string line;
 	std::string section;
@@ -93,7 +96,7 @@ int main(int argc, char* argv[]) {
 	// Set the configurations for fuzzer
 	std::string configFilename = "util/configs.ini";
 	fuzz::BinaryConfig configs;
-	setBinaryConfigs(configs, configFilename);
+	setConfigs(configs, configFilename);
 
 	// fuzz a program 
 	fuzz::fuzz_file(program, configs, 100);

@@ -16,6 +16,11 @@ static std::mt19937 gen(rd());
 static int MIN_INPUT_LEN = 0;
 static int MAX_INPUT_LEN = 0;
 static int NUM_ARGS = 0;
+static bool MUTATE = false;
+static int MUTATIONS = 0;
+
+static std::vector<std::string> argMutations; 
+static int mutationCount = 0;
 
 
 /*
@@ -43,19 +48,59 @@ std::string fuzz::generate_rand_input(int min_size, int max_size, int char_code_
 
 
 /*
- * Generate random inputs and place them into a file
+ * Generate random inputs and place them into an input file
  */
-bool fuzz::setup_input_file(std::string filename) {
+bool fuzz::setup_input_file_random(std::string filename) {
 	std::ofstream file(filename);
 	if(!file) {
 		std::cerr << "Error opening file\n";
 		return false;
 	}
 	for(int i = 0; i < NUM_ARGS; i++) {
-		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, 32, 127);
+		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, CHAR_CODE_START, CHAR_CODE_END);
 		file << a;
 		file << "\n";
 	}
+	file.close();
+	return true;
+}
+
+
+/*
+ * Setup the intial input with a random valid input for the specific arg
+ */
+void fuzz::setup_arg_mutations(std::vector<std::vector<std::string>>& _valid_inputs) {
+	for(size_t i = 0; i < _valid_inputs.size(); i++) {
+		int index = rng(0, _valid_inputs[i].size()-1);
+		argMutations[i] = _valid_inputs[i][index];
+	}
+}
+
+
+/*
+ * Generate inputs and place them into file for mutation guided fuzzing 
+ */
+bool fuzz::setup_input_file_mutation(std::string filename, std::vector<std::vector<std::string>>& _valid_inputs) {
+	std::ofstream file(filename);
+	if(!file) {
+		std::cerr << "Error opening file\n";
+		return false;
+	}
+
+	// Setup the initial input with a random valid input for the specific arg
+	if(mutationCount >= MUTATIONS) {
+		setup_arg_mutations(_valid_inputs);
+		mutationCount = 0;
+	}
+
+	for(int i = 0; i < NUM_ARGS; i++) {
+		std::string input = argMutations[i];
+		mutate_input(input, CHAR_CODE_START, CHAR_CODE_END);
+		file << input;
+		file << "\n";
+		argMutations[i] = input;
+	}
+	mutationCount++;
 	file.close();
 	return true;
 }
@@ -237,12 +282,22 @@ void fuzz::fuzz_file(std::string binName, BinaryConfig& configs, int epochs) {
 	NUM_ARGS = configs._num_args;
 	MAX_INPUT_LEN = configs._max_input_len;
 	MIN_INPUT_LEN = configs._min_input_len;
-
+	MUTATE = configs._mutate;
+	MUTATIONS = configs._mutations;
+	argMutations = std::vector<std::string>(NUM_ARGS, "");
+	setup_arg_mutations(configs._valid_inputs);
 
 	for(int i = 0; i < epochs; i++) {
 		std::string inputFilename = "input";
-		if(!setup_input_file(inputFilename)) { 
-			exit(-1); 
+		if(MUTATE) {
+			if(!setup_input_file_mutation(inputFilename, configs._valid_inputs)) { 
+				exit(-1); 
+			}
+		}
+		else {
+			if(!setup_input_file_random(inputFilename)) { 
+				exit(-1); 
+			}
 		}
 
 		// Initialize inputs, outputs, configurations for binary inputs
@@ -286,6 +341,11 @@ void fuzz::print_statistics() {
 	std::cout << "================== Fuzzing completed ==================" << std::endl;
 	std::cout << "Summary of " << numRuns << " runs: " << std::endl;
 	std::cout << "SIGSEGV: \t" << segFaultNum << std::endl;
+	std::cout << "SIGABRT: \t" << sigAbortNum << std::endl;
+	std::cout << "SIGFPE: \t" << sigFpeNum << std::endl;
+	std::cout << "SIGILL: \t" << sigIllNum << std::endl;
+	std::cout << "SIGBUS: \t" << sigBusNum << std::endl;
+	std::cout << "SIGSYS: \t" << sigSysNum << std::endl;
 }
 
 
