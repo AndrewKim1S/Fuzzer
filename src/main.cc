@@ -1,4 +1,5 @@
 #include "fuzzer.h"
+#include "spinners.hpp"
 
 
 /*
@@ -70,6 +71,9 @@ void setConfigs(fuzz::BinaryConfig& configs, std::string& filename) {
 }
 
 
+/*
+ * main
+ */
 int main(int argc, char* argv[]) {
 	// Check arguments
 	std::string program;
@@ -98,10 +102,20 @@ int main(int argc, char* argv[]) {
 	fuzz::BinaryConfig configs;
 	setConfigs(configs, configFilename);
 
+	// Create loading animation
+	spinners::Spinner *spinner = new spinners::Spinner();
+	spinner->setText("Fuzzing ...");
+	spinner->setInterval(100);
+	spinner->setSymbols("dots2");
+	spinner->start();
+
 	// fuzz a program 
-	fuzz::fuzz_file(program, configs, 100);
+	fuzz::fuzz_file(program, configs, 1000);
 	fuzz::print_statistics();
 
+
+	// End the spinning animation 
+	spinner->stop();
 	
 	// TEST
 	/*

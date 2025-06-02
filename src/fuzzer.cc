@@ -184,6 +184,12 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 			}
 			elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - startTime).count();
 		}
+
+		// Close pipe ends
+		close(stdinPipe[1]);
+		close(stdoutPipe[0]);
+		close(stderrPipe[0]);
+
 		waitpid(pid, &status, 0);
 
 		// Set return code
@@ -338,7 +344,7 @@ void fuzz::log_results(std::string result) {
  * Print statistics
  */
 void fuzz::print_statistics() {
-	std::cout << "================== Fuzzing completed ==================" << std::endl;
+	std::cout << "===================== Fuzzing Completed =====================" << std::endl;
 	std::cout << "Summary of " << numRuns << " runs: " << std::endl;
 	std::cout << "SIGSEGV: \t" << segFaultNum << std::endl;
 	std::cout << "SIGABRT: \t" << sigAbortNum << std::endl;
