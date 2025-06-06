@@ -23,6 +23,7 @@ static std::vector<std::string> argMutations;
 static int mutationCount = 0;
 
 
+
 /*
  * RNG
  */
@@ -36,7 +37,7 @@ int fuzz::rng(int a, int b) {
  * Generate a random input string
  * char_code_start & char_code_end are in ascii codes
  */
-std::string fuzz::generate_rand_input(int min_size, int max_size, int char_code_start, int char_code_end) {
+std::string fuzz::generate_rand_string(int min_size, int max_size, int char_code_start, int char_code_end) {
 	std::string input;
 	size_t size = rng(min_size, max_size);
 	for(size_t i = 0; i < size; i++) {
@@ -50,18 +51,32 @@ std::string fuzz::generate_rand_input(int min_size, int max_size, int char_code_
 /*
  * Generate random inputs and place them into an input file
  */
-bool fuzz::setup_input_file_random(std::string filename) {
-	std::ofstream file(filename);
-	if(!file) {
-		std::cerr << "Error opening file\n";
-		return false;
-	}
+bool fuzz::setup_input_arg_random(Input& in) {
 	for(int i = 0; i < NUM_ARGS; i++) {
-		auto a = generate_rand_input(MIN_INPUT_LEN, MAX_INPUT_LEN, CHAR_CODE_START, CHAR_CODE_END);
-		file << a;
-		file << "\n";
+		auto a = generate_rand_string(MIN_INPUT_LEN, MAX_INPUT_LEN, CHAR_CODE_START, CHAR_CODE_END);
+		in._argInputs.push_back(a);
 	}
-	file.close();
+	return true;
+}
+
+
+/*
+ * Generate inputs and place them into file for mutation guided fuzzing 
+ */
+bool fuzz::setup_input_arg_mutation(Input& in, std::vector<std::vector<std::string>>& _valid_inputs) {
+	// Setup the initial input with a random valid input for the specific arg
+	if(mutationCount >= MUTATIONS) {
+		setup_arg_mutations(_valid_inputs);
+		mutationCount = 0;
+	}
+
+	for(int i = 0; i < NUM_ARGS; i++) {
+		std::string input = argMutations[i];
+		mutate_input(input, CHAR_CODE_START, CHAR_CODE_END);
+		in._argInputs.push_back(input);
+		argMutations[i] = input;
+	}
+	mutationCount++;
 	return true;
 }
 
@@ -78,31 +93,21 @@ void fuzz::setup_arg_mutations(std::vector<std::vector<std::string>>& _valid_inp
 
 
 /*
- * Generate inputs and place them into file for mutation guided fuzzing 
+ * Function to setup environment variables
  */
-bool fuzz::setup_input_file_mutation(std::string filename, std::vector<std::vector<std::string>>& _valid_inputs) {
-	std::ofstream file(filename);
-	if(!file) {
-		std::cerr << "Error opening file\n";
-		return false;
-	}
+void fuzz::setup_env_variables() {}
 
-	// Setup the initial input with a random valid input for the specific arg
-	if(mutationCount >= MUTATIONS) {
-		setup_arg_mutations(_valid_inputs);
-		mutationCount = 0;
-	}
 
-	for(int i = 0; i < NUM_ARGS; i++) {
-		std::string input = argMutations[i];
-		mutate_input(input, CHAR_CODE_START, CHAR_CODE_END);
-		file << input;
-		file << "\n";
-		argMutations[i] = input;
-	}
-	mutationCount++;
-	file.close();
-	return true;
+/*
+ * Setup inputs from vector form to char**
+ */
+void fuzz::setup_input(std::vector<std::string>& inputs, char**& list, int len, int start) {
+	int in_index = 0;
+	for(int i = start; i < len; i++) {
+		list[i] = strdup(inputs[in_index].c_str());
+		in_index++;
+	} 
+	list[len] = nullptr;
 }
 
 
@@ -119,21 +124,10 @@ void fuzz::run_program_args(std::string& program, Input& in, Output& out) {
 	}
 
 	// Setup inputs
-	std::ifstream inputFile(in._inputFile);
-	if(!inputFile) {
-		std::cerr << "Error opening input file for reading\n" << std::endl;
-		exit(-1);
-	}
 	char** args = new char*[NUM_ARGS+2];
-	char** env = {NULL};
-	std::string line;
 	args[0] = strdup(program.c_str());
-	for(int i = 1; i < NUM_ARGS+1; i++) {
-		std::getline(inputFile, line);
-		args[i] = strdup(line.c_str());
-	} 
-	args[NUM_ARGS+1] = nullptr;
-	inputFile.close();
+	setup_input(in._argInputs, args, NUM_ARGS+1, 1);
+	char** env = {NULL};
 
 	// Setup time
 	auto startTime = std::chrono::steady_clock::now();
@@ -267,15 +261,15 @@ void fuzz::analyze_output(Input& in, Output& out) {
 	}
 
 	// Write to file
-	std::ifstream inputFile(in._inputFile);
-	if(!inputFile) { 
-		std::cerr << "Failed to open file" << std::endl;
-		return;
-	}
-	std::ostringstream buf;
-	buf << inputFile.rdbuf();
-	log += buf.str();
-
+	auto input_to_string = [](std::vector<std::string>& v){
+		std::string result = "";
+		for(std::string s : v) {
+			result += s;
+			result += " ";
+		}
+		return result;
+	};
+	log += input_to_string(in._argInputs) + "\n";
 	log_results(log);
 }
 
@@ -290,25 +284,21 @@ void fuzz::fuzz_file(std::string binName, BinaryConfig& configs, int epochs) {
 	MIN_INPUT_LEN = configs._min_input_len;
 	MUTATE = configs._mutate;
 	MUTATIONS = configs._mutations;
+
+	// Setup Arguments
 	argMutations = std::vector<std::string>(NUM_ARGS, "");
 	setup_arg_mutations(configs._valid_inputs);
 
-	for(int i = 0; i < epochs; i++) {
-		std::string inputFilename = "input";
-		if(MUTATE) {
-			if(!setup_input_file_mutation(inputFilename, configs._valid_inputs)) { 
-				exit(-1); 
-			}
-		}
-		else {
-			if(!setup_input_file_random(inputFilename)) { 
-				exit(-1); 
-			}
-		}
+	// Setup initial env variables
+	//setup_env_variables();
 
+	
+	for(int i = 0; i < epochs; i++) {
 		// Initialize inputs, outputs, configurations for binary inputs
 		Input in;
-		in._inputFile = inputFilename;
+		in._inputFile = "input";
+		in._argInputs = std::vector<std::string> {};
+		in._envVariables = std::vector<std::string> {};
 
 		Output out;
 		out._returnCode = 0;
@@ -316,6 +306,17 @@ void fuzz::fuzz_file(std::string binName, BinaryConfig& configs, int epochs) {
 		out._timeout = false;
 		out._stderrOutput = "";
 		
+		if(MUTATE) {
+			if(!setup_input_arg_mutation(in, configs._valid_inputs)) { 
+				exit(-1); 
+			}
+		}
+		else {
+			if(!setup_input_arg_random(in)) { 
+				exit(-1); 
+			}
+		}
+
 		// Run Program
 		run_program_args(binName, in, out);
 

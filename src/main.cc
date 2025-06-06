@@ -117,20 +117,6 @@ int main(int argc, char* argv[]) {
 	// End the spinning animation 
 	spinner->stop();
 	
-	// TEST
-	/*
-	std::cout << configs._num_args << std::endl;
-	std::cout << configs._min_input_len << std::endl;
-	std::cout << configs._max_input_len << std::endl;
-	std::cout << configs._mutations << std::endl;
-	std::cout << configs._mutate << std::endl;
-	for(size_t j = 0; j < configs._valid_inputs.size(); j++) {
-		for(size_t i = 0; i < configs._valid_inputs[j].size(); i++) {
-			std::cout << configs._valid_inputs[j][i];
-		}
-	}
-	*/
-
 
 	return 0;
 }
